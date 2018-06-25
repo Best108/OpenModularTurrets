@@ -1,5 +1,14 @@
 package omtteam.openmodularturrets.tileentity.turrets;
 
+import static omtteam.omlib.util.MathUtil.getVelocityVectorFromYawPitch;
+import static omtteam.omlib.util.PlayerUtil.isPlayerTrusted;
+import static omtteam.openmodularturrets.blocks.turretheads.BlockAbstractTurretHead.CONCEALED;
+
+import java.util.Random;
+
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
+
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.EntityPlayerMP;
@@ -21,19 +30,15 @@ import omtteam.omlib.tileentity.TileEntityOwnedBlock;
 import omtteam.omlib.util.RandomUtil;
 import omtteam.openmodularturrets.api.ITurretBaseAddonTileEntity;
 import omtteam.openmodularturrets.blocks.turretheads.BlockAbstractTurretHead;
+import omtteam.openmodularturrets.compatibility.ModCompatibility;
 import omtteam.openmodularturrets.entity.projectiles.TurretProjectile;
 import omtteam.openmodularturrets.handler.OMTConfigHandler;
 import omtteam.openmodularturrets.init.ModSounds;
 import omtteam.openmodularturrets.tileentity.TurretBase;
 import omtteam.openmodularturrets.util.TurretHeadUtil;
-
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import java.util.Random;
-
-import static omtteam.omlib.util.MathUtil.getVelocityVectorFromYawPitch;
-import static omtteam.omlib.util.PlayerUtil.isPlayerTrusted;
-import static omtteam.openmodularturrets.blocks.turretheads.BlockAbstractTurretHead.CONCEALED;
+import valkyrienwarfare.api.IPhysicsEntity;
+import valkyrienwarfare.api.IPhysicsEntityManager;
+import valkyrienwarfare.api.TransformType;
 
 
 public abstract class TurretHead extends TileEntityBase implements ITickable, ITurretBaseAddonTileEntity {
@@ -279,14 +284,15 @@ public abstract class TurretHead extends TileEntityBase implements ITickable, IT
     boolean chebyshevDistance(Entity target) {
         Vec3d targetPos = new Vec3d(target.posX, target.posY, target.posZ);
 
-        /*if (ModCompatibility.ValkyrienWarfareLoaded) {
-            Entity shipEntity = ValkyrienWarfareHelper.getShipManagingBlock(this.getWorld(), this.getPos());
-
-            if (shipEntity != null) {
-                //The turret is on a Ship, time to convert the coordinates; converting the target positions to local ship space
-                targetPos = ValkyrienWarfareHelper.getVec3InShipSpaceFromWorldSpace(shipEntity, targetPos);
-            }
-        } */
+        if (ModCompatibility.ValkyrienWarfareLoaded) {
+			// If the turret is in ship space, then move the entity vector into ship space
+			// as well before measuring distance
+			IPhysicsEntity physicsEntity = IPhysicsEntityManager.INSTANCE.getPhysicsEntityFromShipSpace(getWorld(),
+					getPos());
+			if (physicsEntity != null) {
+				targetPos = physicsEntity.transformVector(targetPos, TransformType.GLOBAL_TO_SUBSPACE);
+			}
+        }
 
         return MathHelper.absMax(MathHelper.absMax(targetPos.x - this.getPos().getX(), targetPos.y - this.getPos().getY()),
                 targetPos.z - this.getPos().getZ()) > (this.getBaseFromWorld().getCurrentMaxRange());
@@ -460,6 +466,19 @@ public abstract class TurretHead extends TileEntityBase implements ITickable, IT
         double d0 = target.posX - (this.pos.getX() + 0.5);
         double d1 = target.posY + (double) target.height * 0.5F - (this.pos.getY() + 0.5);
         double d2 = target.posZ - (this.pos.getZ() + 0.5);
+
+		if (ModCompatibility.ValkyrienWarfareLoaded) {
+			IPhysicsEntity physicsEntity = IPhysicsEntityManager.INSTANCE.getPhysicsEntityFromShipSpace(getWorld(),
+					getPos());
+			if (physicsEntity != null) {
+				Vec3d targetPos = target.getPositionVector();
+				Vec3d targetPosInShip = physicsEntity.transformVector(targetPos, TransformType.GLOBAL_TO_SUBSPACE);
+				d0 = targetPosInShip.x - (this.pos.getX() + 0.5);
+				d1 = targetPosInShip.y + (double) target.height * 0.5F - (this.pos.getY() + 0.5);
+				d2 = targetPosInShip.z - (this.pos.getZ() + 0.5);
+			}
+		}
+        
         double dist = MathHelper.sqrt(d0 * d0 + d1 * d1 + d2 * d2);
         double inaccuracy = this.getTurretAccuracy() * (1 - TurretHeadUtil.getAccuraccyUpgrades(base)) * (1 + TurretHeadUtil.getScattershotUpgrades(base));
 
@@ -557,15 +576,17 @@ public abstract class TurretHead extends TileEntityBase implements ITickable, IT
             // Set projectile starting position
             projectile.setPosition(this.pos.getX() + 0.5, this.pos.getY() + 0.5, this.pos.getZ() + 0.5);
 
-            //If the turret is on a Ship, it needs to change to World coordinates from Ship coordinates
-            /*if (ModCompatibility.ValkyrienWarfareLoaded) {
-                Entity shipEntity = ValkyrienWarfareHelper.getShipManagingBlock(this.getWorld(), this.getPos());
-                if (shipEntity != null) {
-                    Vec3d inShipPos = new Vec3d(this.getPos().getX() + 0.5, this.getPos().getY() + 0.5, this.getPos().getZ() + 0.5);
-                    Vec3d inWorldPos = ValkyrienWarfareHelper.getVec3InWorldSpaceFromShipSpace(shipEntity, inShipPos);
-                    projectile.setPosition(inWorldPos.x, inWorldPos.y, inWorldPos.z);
-                }
-            } */
+			if (ModCompatibility.ValkyrienWarfareLoaded) {
+				// If the turret is on a Ship, it needs to change to World coordinates from Ship
+				// coordinates
+				IPhysicsEntity physicsEntity = IPhysicsEntityManager.INSTANCE.getPhysicsEntityFromShipSpace(getWorld(),
+						getPos());
+				if (physicsEntity != null) {
+					Vec3d oldPos = projectile.getPositionVector();
+					Vec3d newPos = physicsEntity.transformVector(oldPos, TransformType.SUBSPACE_TO_GLOBAL);
+					projectile.setPosition(newPos.x, newPos.y, newPos.z);
+				}
+			}
 
             // Set projectile heading
             projectile.shoot(adjustedX, adjustedY, adjustedZ, speedFactor, accuracy);

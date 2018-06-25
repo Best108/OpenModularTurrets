@@ -1,7 +1,27 @@
 package omtteam.openmodularturrets.util;
 
+import static omtteam.omlib.compatibility.ModCompatibility.ComputerCraftLoaded;
+import static omtteam.omlib.compatibility.ModCompatibility.OpenComputersLoaded;
+import static omtteam.omlib.util.GeneralUtil.safeLocalize;
+import static omtteam.omlib.util.InvUtil.getStackSize;
+import static omtteam.omlib.util.PlayerUtil.addChatMessage;
+import static omtteam.omlib.util.PlayerUtil.isPlayerOwner;
+import static omtteam.omlib.util.PlayerUtil.isPlayerTrusted;
+import static omtteam.openmodularturrets.blocks.BlockBaseAddon.MODEL;
+import static omtteam.openmodularturrets.util.OMTUtil.isItemStackValidAmmo;
+
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+
 import net.minecraft.block.state.IBlockState;
-import net.minecraft.entity.*;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityList;
+import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.entity.EnumCreatureType;
+import net.minecraft.entity.IEntityOwnable;
 import net.minecraft.entity.passive.EntityAmbientCreature;
 import net.minecraft.entity.passive.EntityAnimal;
 import net.minecraft.entity.passive.EntityHorse;
@@ -11,7 +31,11 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.potion.Potion;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
-import net.minecraft.util.math.*;
+import net.minecraft.util.math.AxisAlignedBB;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.MathHelper;
+import net.minecraft.util.math.RayTraceResult;
+import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.text.TextComponentString;
 import net.minecraft.util.text.TextFormatting;
 import net.minecraft.world.World;
@@ -29,16 +53,9 @@ import omtteam.openmodularturrets.items.AmmoMetaItem;
 import omtteam.openmodularturrets.tileentity.Expander;
 import omtteam.openmodularturrets.tileentity.TurretBase;
 import omtteam.openmodularturrets.tileentity.turrets.TurretHead;
-
-import java.util.*;
-
-import static omtteam.omlib.compatibility.ModCompatibility.ComputerCraftLoaded;
-import static omtteam.omlib.compatibility.ModCompatibility.OpenComputersLoaded;
-import static omtteam.omlib.util.GeneralUtil.safeLocalize;
-import static omtteam.omlib.util.InvUtil.getStackSize;
-import static omtteam.omlib.util.PlayerUtil.*;
-import static omtteam.openmodularturrets.blocks.BlockBaseAddon.MODEL;
-import static omtteam.openmodularturrets.util.OMTUtil.isItemStackValidAmmo;
+import valkyrienwarfare.api.IPhysicsEntity;
+import valkyrienwarfare.api.IPhysicsEntityManager;
+import valkyrienwarfare.api.TransformType;
 
 public class TurretHeadUtil {
     private static final HashSet<EntityPlayerMP> warnedPlayers = new HashSet<>();
@@ -510,13 +527,13 @@ public class TurretHeadUtil {
     public static float getAimYaw(Entity target, BlockPos pos) {
         Vec3d targetPos = new Vec3d(target.posX, target.posY, target.posZ);
 
-        /*if (ModCompatibility.ValkyrienWarfareLoaded) {
-            Entity shipEntity = ValkyrienWarfareHelper.getShipManagingBlock(target.getEntityWorld(), pos);
-            //We're in Ship space, convert target coords to local coords
-            if (shipEntity != null) {
-                targetPos = ValkyrienWarfareHelper.getVec3InShipSpaceFromWorldSpace(shipEntity, targetPos);
-            }
-        } */
+		if (ModCompatibility.ValkyrienWarfareLoaded) {
+			IPhysicsEntity physicsEntity = IPhysicsEntityManager.INSTANCE
+					.getPhysicsEntityFromShipSpace(target.getEntityWorld(), pos);
+			if (physicsEntity != null) {
+				targetPos = physicsEntity.transformVector(targetPos, TransformType.GLOBAL_TO_SUBSPACE);
+			}
+		}
 
         double dX = (targetPos.x) - (pos.getX());
         double dZ = (targetPos.z) - (pos.getZ());
@@ -532,14 +549,13 @@ public class TurretHeadUtil {
     public static float getAimPitch(Entity target, BlockPos pos) {
         Vec3d targetPos = new Vec3d(target.posX, target.posY, target.posZ);
 
-        /*if (ModCompatibility.ValkyrienWarfareLoaded) {
-            Entity shipEntity = ValkyrienWarfareHelper.getShipManagingBlock(target.getEntityWorld(), pos);
-
-            //We're in Ship space, convert target coords to local coords
-            if (shipEntity != null) {
-                targetPos = ValkyrienWarfareHelper.getVec3InShipSpaceFromWorldSpace(shipEntity, targetPos);
-            }
-        } */
+		if (ModCompatibility.ValkyrienWarfareLoaded) {
+			IPhysicsEntity physicsEntity = IPhysicsEntityManager.INSTANCE
+					.getPhysicsEntityFromShipSpace(target.getEntityWorld(), pos);
+			if (physicsEntity != null) {
+				targetPos = physicsEntity.transformVector(targetPos, TransformType.GLOBAL_TO_SUBSPACE);
+			}
+		}
 
         BlockPos targetBlockPos = new BlockPos(targetPos.x, targetPos.y, targetPos.z);
 
@@ -892,16 +908,17 @@ public class TurretHeadUtil {
 
     public static boolean canTurretSeeTarget(TurretHead turret, EntityLivingBase target) {
         Vec3d traceStart = new Vec3d(turret.getPos().getX() + 0.5F, turret.getPos().getY() + 0.5F, turret.getPos().getZ() + 0.5F);
-
-        /*if (ModCompatibility.ValkyrienWarfareLoaded) {
-            Entity shipEntity = ValkyrienWarfareHelper.getShipManagingBlock(turret.getWorld(), turret.getPos());
-            //Then the turret must be in Ship Space
-            if (shipEntity != null) {
-                traceStart = ValkyrienWarfareHelper.getVec3InWorldSpaceFromShipSpace(shipEntity, traceStart);
-            }
-        } */
-
-
+        
+		// VW Mod Compatibility
+		if (ModCompatibility.ValkyrienWarfareLoaded) {
+			BlockPos pos = new BlockPos(traceStart);
+			IPhysicsEntity physicsEntity = IPhysicsEntityManager.INSTANCE.getPhysicsEntityFromShipSpace(target.world,
+					pos);
+			if (physicsEntity != null) {
+				traceStart = physicsEntity.transformVector(traceStart, TransformType.SUBSPACE_TO_GLOBAL);
+			}
+		}
+        
         Vec3d traceEnd = new Vec3d(target.posX, target.posY + target.getEyeHeight(), target.posZ);
         Vec3d vecDelta = new Vec3d(traceEnd.x - traceStart.x,
                 traceEnd.y - traceStart.y,

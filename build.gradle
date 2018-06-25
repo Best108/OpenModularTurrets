@@ -56,6 +56,9 @@ repositories {
             artifact "[module]-[revision](-[classifier])(.[ext])"
         }
     } */
+	maven {
+		url 'https://maven.daporkchop.net/'
+	}
 }
 
 sourceCompatibility = 1.8
@@ -118,10 +121,6 @@ processResources {
     }
 }
 
-configurations {
-    runtime.exclude group: 'ValkyrienWarfareRevamped', module: 'valkyrienwarfare'
-}
-
 def omlib_local = false
 if (project.allprojects.findAll({ it.name == "OMLib" }).size() > 0) {
     omlib_local = true
@@ -142,7 +141,6 @@ dependencies {
     compileOnly "li.cil.oc:OpenComputers:MC${config.minecraft_version_short}.1-${config.oc_version}"
     compileOnly "net.industrial-craft:industrialcraft-2:${config.ic2_version}:dev"
     compileOnly "net.darkhax.tesla:Tesla-${config.minecraft_version_short}:${config.tesla_version}"
-    //compileOnly "ValkyrienWarfareRevamped:valkyrienwarfare:${config.valkyrienwarfare_version}:dev"
     if (!omlib_local) {
         compileOnly "omtteam:omlib:${config.minecraft_version}-${config.omlib_version}:dev"
     } else {
@@ -154,6 +152,7 @@ dependencies {
     //runtime "com.enderio:EnderIO:${config.minecraft_version}-${config.enderio_version}"
     runtime "com.enderio.core:EnderCore:${config.minecraft_version}-${config.endercore_version}"
     //runtime "com.github.azanor:baubles:${config.baubles_version}"
+    compile 'valkyrienwarfare:api:1.0'
 }
 
 task deobfJar(type: Jar) {
